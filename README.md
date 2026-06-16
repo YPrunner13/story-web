@@ -8,9 +8,10 @@
 ## 현재 구현 (Phase 1 MVP)
 
 - 주제 입력 → Claude API로 SNS 콘텐츠 자동 생성
+- **⚡ 자동 운영(Auto-Pilot)** — 주제 하나로 며칠치 콘텐츠를 자동 기획 → 생성 → 예약 (멀티스텝 워크플로, Pro 전용)
 - **Free / Pro 2단계 게이팅**
-  - Free: 하루 3건, 인스타그램만
-  - Pro: 무제한, 멀티 채널(블로그·X·스레드)
+  - Free: 하루 3건, 인스타그램만, 단건 생성
+  - Pro: 무제한, 멀티 채널(블로그·X·스레드), 자동 운영
 - Pro 업셀 UI (결제 연동 자리 — Stripe 예정)
 
 ## 실행 방법
@@ -29,8 +30,9 @@ Next.js (App Router) · TypeScript · Tailwind CSS · Anthropic Claude API
 
 ```
 app/
-  page.tsx              # 메인 화면 (생성 폼 + 티어 토글)
-  api/generate/route.ts # 콘텐츠 생성 API (티어 게이팅)
+  page.tsx               # 메인 화면 (단건 생성 / 자동 운영 + 티어 토글)
+  api/generate/route.ts  # 단건 콘텐츠 생성 API (티어 게이팅)
+  api/autopilot/route.ts # 자동 운영: 기획→생성→예약 멀티스텝 워크플로 (Pro)
 lib/
   tiers.ts              # Free/Pro 권한 정의
 docs/
