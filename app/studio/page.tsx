@@ -66,24 +66,47 @@ export default function Studio() {
     });
   }, [board]);
 
-  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 한국어 음성 준비
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceName, setVoiceName] = useState("");
+  const [rate, setRate] = useState(1.2);
+  const [pitch, setPitch] = useState(1.3);
+
+  // 사용 가능한 음성 준비 (한국어 우선)
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const pick = () => {
-      const voices = window.speechSynthesis.getVoices();
-      voiceRef.current =
-        voices.find((v) => v.lang.startsWith("ko")) ?? voices[0] ?? null;
+    const load = () => {
+      const list = window.speechSynthesis.getVoices();
+      const sorted = [...list].sort(
+        (a, b) =>
+          (b.lang.startsWith("ko") ? 1 : 0) - (a.lang.startsWith("ko") ? 1 : 0),
+      );
+      setVoices(sorted);
+      setVoiceName(
+        (prev) => prev || sorted.find((v) => v.lang.startsWith("ko"))?.name || sorted[0]?.name || "",
+      );
     };
-    pick();
-    window.speechSynthesis.onvoiceschanged = pick;
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
     return () => {
       window.speechSynthesis.cancel();
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
+
+  function applyTone(preset: "anime" | "narrator" | "calm") {
+    if (preset === "anime") {
+      setRate(1.2);
+      setPitch(1.3); // 활기찬 소년 애니 톤
+    } else if (preset === "narrator") {
+      setRate(1.0);
+      setPitch(1.0);
+    } else {
+      setRate(0.92);
+      setPitch(0.85);
+    }
+  }
 
   function stopPlayback() {
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -111,8 +134,10 @@ export default function Studio() {
       synth.cancel();
       const u = new SpeechSynthesisUtterance(scene.narration);
       u.lang = "ko-KR";
-      if (voiceRef.current) u.voice = voiceRef.current;
-      u.rate = 1.05;
+      const chosen = voices.find((v) => v.name === voiceName);
+      if (chosen) u.voice = chosen;
+      u.rate = rate;
+      u.pitch = pitch;
       u.onend = advance;
       // 음성 실패 대비 안전 타이머
       timerRef.current = setTimeout(advance, (estimateDuration(scene.narration) + 2) * 1000);
@@ -218,6 +243,75 @@ export default function Studio() {
             {loading ? "AI가 대본·장면 구성 중…" : "🎬 영상 자동 생성"}
           </button>
         </div>
+      </section>
+
+      {/* 캐릭터 목소리 톤 */}
+      <section className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <p className="mb-2 text-sm font-medium text-neutral-300">🎙️ 목소리 톤</p>
+        <div className="mb-3 flex flex-wrap gap-2 text-sm">
+          <button
+            onClick={() => applyTone("anime")}
+            className="rounded-full border border-neutral-700 px-3 py-1.5 hover:border-neutral-400"
+          >
+            활기찬 소년 애니 톤
+          </button>
+          <button
+            onClick={() => applyTone("narrator")}
+            className="rounded-full border border-neutral-700 px-3 py-1.5 hover:border-neutral-400"
+          >
+            기본 나레이터
+          </button>
+          <button
+            onClick={() => applyTone("calm")}
+            className="rounded-full border border-neutral-700 px-3 py-1.5 hover:border-neutral-400"
+          >
+            차분한 톤
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="text-xs text-neutral-400">
+            음성
+            <select
+              value={voiceName}
+              onChange={(e) => setVoiceName(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100"
+            >
+              {voices.length === 0 && <option value="">기본 음성</option>}
+              {voices.map((v) => (
+                <option key={v.name} value={v.name}>
+                  {v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-neutral-400">
+            속도 {rate.toFixed(2)}
+            <input
+              type="range"
+              min={0.7}
+              max={1.5}
+              step={0.05}
+              value={rate}
+              onChange={(e) => setRate(Number(e.target.value))}
+              className="mt-2 w-full"
+            />
+          </label>
+          <label className="text-xs text-neutral-400">
+            톤 높이 {pitch.toFixed(2)}
+            <input
+              type="range"
+              min={0.5}
+              max={1.6}
+              step={0.05}
+              value={pitch}
+              onChange={(e) => setPitch(Number(e.target.value))}
+              className="mt-2 w-full"
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-neutral-500">
+          * 톤은 다음 재생부터 적용됩니다. 사용 가능한 음성은 브라우저/OS에 따라 달라요.
+        </p>
       </section>
 
       {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
