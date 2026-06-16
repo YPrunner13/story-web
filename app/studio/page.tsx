@@ -73,6 +73,19 @@ export default function Studio() {
   const [rate, setRate] = useState(1.2);
   const [pitch, setPitch] = useState(1.3);
 
+  const [tonePreset, setTonePreset] = useState<"anime" | "narrator" | "calm">("anime");
+  const [serverTts, setServerTts] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCache = useRef<Map<number, string>>(new Map());
+
+  // 고품질 TTS 사용 가능 여부 확인 (서버 키 설정 시)
+  useEffect(() => {
+    fetch("/api/tts")
+      .then((r) => r.json())
+      .then((d) => setServerTts(Boolean(d.available)))
+      .catch(() => setServerTts(false));
+  }, []);
+
   // 사용 가능한 음성 준비 (한국어 우선)
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -96,6 +109,7 @@ export default function Studio() {
   }, []);
 
   function applyTone(preset: "anime" | "narrator" | "calm") {
+    setTonePreset(preset);
     if (preset === "anime") {
       setRate(1.2);
       setPitch(1.3); // 활기찬 소년 애니 톤
@@ -112,11 +126,55 @@ export default function Studio() {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+    if (audioRef.current) audioRef.current.pause();
     if (timerRef.current) clearTimeout(timerRef.current);
   }
 
-  // 장면 i를 재생: 나레이션 음성 + 끝나면 다음 장면
-  function playScene(scenes: Scene[], i: number) {
+  // 브라우저 내장 음성 (폴백)
+  function browserSpeak(scene: Scene, advance: () => void) {
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    if (synth && scene.narration) {
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(scene.narration);
+      u.lang = "ko-KR";
+      const chosen = voices.find((v) => v.name === voiceName);
+      if (chosen) u.voice = chosen;
+      u.rate = rate;
+      u.pitch = pitch;
+      u.onend = advance;
+      timerRef.current = setTimeout(advance, (estimateDuration(scene.narration) + 2) * 1000);
+      u.onstart = () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(advance, (estimateDuration(scene.narration) + 4) * 1000);
+      };
+      synth.speak(u);
+    } else {
+      timerRef.current = setTimeout(advance, estimateDuration(scene.narration) * 1000);
+    }
+  }
+
+  // 고품질 서버 음성 생성 (장면별 캐시)
+  async function getSceneAudio(i: number, text: string): Promise<string> {
+    const cache = audioCache.current;
+    const cached = cache.get(i);
+    if (cached) return cached;
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, tone: tonePreset }),
+    });
+    if (!res.ok) {
+      if (res.status === 501) setServerTts(false);
+      throw new Error("server tts failed");
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    cache.set(i, url);
+    return url;
+  }
+
+  // 장면 i 재생: 고품질 음성 우선, 실패 시 브라우저 음성 폴백
+  async function playScene(scenes: Scene[], i: number) {
     if (i >= scenes.length) {
       setPlaying(false);
       setDone(true);
@@ -129,30 +187,31 @@ export default function Studio() {
     const scene = scenes[i];
     const advance = () => playScene(scenes, i + 1);
 
-    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
-    if (synth && scene.narration) {
-      synth.cancel();
-      const u = new SpeechSynthesisUtterance(scene.narration);
-      u.lang = "ko-KR";
-      const chosen = voices.find((v) => v.name === voiceName);
-      if (chosen) u.voice = chosen;
-      u.rate = rate;
-      u.pitch = pitch;
-      u.onend = advance;
-      // 음성 실패 대비 안전 타이머
-      timerRef.current = setTimeout(advance, (estimateDuration(scene.narration) + 2) * 1000);
-      u.onstart = () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(advance, (estimateDuration(scene.narration) + 4) * 1000);
-      };
-      synth.speak(u);
-    } else {
-      timerRef.current = setTimeout(advance, estimateDuration(scene.narration) * 1000);
+    if (serverTts) {
+      try {
+        const url = await getSceneAudio(i, scene.narration);
+        const audio = audioRef.current ?? new Audio();
+        audioRef.current = audio;
+        audio.onended = advance;
+        audio.onerror = () => browserSpeak(scene, advance);
+        audio.src = url;
+        await audio.play();
+        // 다음 장면 음성 미리 생성 (끊김 방지)
+        if (i + 1 < scenes.length) {
+          getSceneAudio(i + 1, scenes[i + 1].narration).catch(() => {});
+        }
+        return;
+      } catch {
+        // 서버 음성 실패 → 브라우저 음성으로
+      }
     }
+    browserSpeak(scene, advance);
   }
 
   async function generate() {
     stopPlayback();
+    audioCache.current.forEach((url) => URL.revokeObjectURL(url));
+    audioCache.current.clear();
     setError("");
     setBoard(null);
     setDone(false);
@@ -178,13 +237,21 @@ export default function Studio() {
   function handlePlay() {
     if (!board) return;
     const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    const audio = audioRef.current;
     if (playing) {
+      audio?.pause();
       synth?.pause();
       if (timerRef.current) clearTimeout(timerRef.current);
       setPlaying(false);
       return;
     }
-    // 일시정지 후 재개
+    // 일시정지 후 재개 — 고품질 음성
+    if (audio && audio.src && !audio.ended && audio.currentTime > 0 && !done) {
+      audio.play();
+      setPlaying(true);
+      return;
+    }
+    // 일시정지 후 재개 — 브라우저 음성
     if (synth?.paused && !done) {
       synth.resume();
       setPlaying(true);
@@ -247,7 +314,18 @@ export default function Studio() {
 
       {/* 캐릭터 목소리 톤 */}
       <section className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-        <p className="mb-2 text-sm font-medium text-neutral-300">🎙️ 목소리 톤</p>
+        <p className="mb-2 flex items-center gap-2 text-sm font-medium text-neutral-300">
+          🎙️ 목소리 톤
+          {serverTts ? (
+            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
+              고품질 AI 음성
+            </span>
+          ) : (
+            <span className="rounded-full bg-neutral-700/50 px-2 py-0.5 text-xs text-neutral-400">
+              브라우저 음성 (키 미설정)
+            </span>
+          )}
+        </p>
         <div className="mb-3 flex flex-wrap gap-2 text-sm">
           <button
             onClick={() => applyTone("anime")}
@@ -310,7 +388,8 @@ export default function Studio() {
           </label>
         </div>
         <p className="mt-2 text-xs text-neutral-500">
-          * 톤은 다음 재생부터 적용됩니다. 사용 가능한 음성은 브라우저/OS에 따라 달라요.
+          * 톤은 다음 재생부터 적용. 고품질 AI 음성이 켜지면 프리셋이 음성 표현에 반영되고,
+          아래 음성/속도/톤 슬라이더는 브라우저 음성 폴백에만 적용됩니다.
         </p>
       </section>
 

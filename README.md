@@ -12,6 +12,9 @@
 
 이미지 생성은 `lib/image.ts`에서 추상화 — 기본값은 키 없이 동작하는 Pollinations, 다른 제공자로 교체 가능.
 
+음성은 `lib/tts.ts`에서 추상화 — `ELEVENLABS_API_KEY` 설정 시 표현력 있는 고품질 캐릭터 음성,
+미설정 시 브라우저 내장 음성으로 자동 폴백. 톤 프리셋(활기찬 애니/나레이터/차분)으로 캐릭터 느낌 조절.
+
 영상 제작 파이프라인:
 ```
 주제 → ①대본 → ②장면분할 → ③비주얼/애니 → ④나레이션(TTS) → ⑤MP4 → 유튜브 업로드
@@ -49,6 +52,10 @@ app/
   api/generate/route.ts  # 단건 콘텐츠 생성 API (티어 게이팅)
   api/autopilot/route.ts # 자동 운영: 기획→생성→예약 멀티스텝 워크플로 (Pro)
   api/video/route.ts     # 영상 스토리보드 생성 (주제 → 대본·장면 JSON)
+  api/tts/route.ts       # 고품질 캐릭터 음성 (ElevenLabs, 미설정 시 폴백)
+lib/
+  image.ts               # 장면 이미지 URL 빌더 (제공자 교체 가능)
+  tts.ts                 # 고품질 TTS 합성 (제공자 교체 가능)
 lib/
   tiers.ts              # Free/Pro 권한 정의
 docs/
