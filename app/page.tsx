@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   CHANNEL_LABELS,
   TIER_LIMITS,
@@ -122,6 +123,9 @@ export default function Home() {
         <div>
           <h1 className="text-2xl font-bold">AutoMate</h1>
           <p className="text-sm text-neutral-400">주제만 던지면, 콘텐츠가 알아서.</p>
+          <Link href="/studio" className="text-sm text-indigo-400 hover:underline">
+            🎬 영상 자동 제작 스튜디오 →
+          </Link>
         </div>
         <div className="flex rounded-full border border-neutral-700 p-1 text-sm">
           {(["free", "pro"] as Tier[]).map((t) => (
