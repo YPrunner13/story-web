@@ -11,7 +11,8 @@ export type Mood = "calm" | "energetic" | "serious" | "playful" | "inspiring";
 export interface Scene {
   narration: string; // TTS로 읽어줄 나레이션
   onScreenText: string; // 화면에 띄울 짧은 자막/키워드
-  visual: string; // 비주얼 묘사 (다음 단계: 이미지 생성 프롬프트)
+  visual: string; // 비주얼 묘사 (한국어)
+  imagePrompt: string; // 장면 이미지 생성용 프롬프트 (영어)
   mood: Mood; // 장면 분위기 → 색감/애니메이션 결정
 }
 
@@ -51,6 +52,7 @@ function normalizeScene(raw: Partial<Scene>): Scene {
     narration: String(raw.narration ?? "").trim(),
     onScreenText: String(raw.onScreenText ?? "").trim(),
     visual: String(raw.visual ?? "").trim(),
+    imagePrompt: String(raw.imagePrompt ?? raw.visual ?? "").trim(),
     mood,
   };
 }
@@ -92,10 +94,11 @@ export async function POST(req: NextRequest) {
             `각 장면:`,
             `- narration: 그 장면에서 성우가 읽을 나레이션 (1~2문장, 자연스러운 구어체 한국어)`,
             `- onScreenText: 화면에 크게 띄울 짧은 자막/키워드 (8자 내외)`,
-            `- visual: 어떤 애니메이션 장면인지 묘사 (이미지 생성용, 한국어)`,
+            `- visual: 어떤 애니메이션 장면인지 한국어 묘사`,
+            `- imagePrompt: 이 장면 이미지를 만들 영어 프롬프트. 반드시 "flat 2D animation illustration, vibrant colors, clean shapes," 로 시작하고 장면을 구체적으로 묘사. 글자/텍스트는 넣지 말 것.`,
             `- mood: ${MOODS.join(" | ")} 중 하나`,
             `반드시 아래 JSON 형식으로만 답해. 다른 말 금지:`,
-            `{"title":"영상 제목","hook":"썸네일 후킹 문구","scenes":[{"narration":"","onScreenText":"","visual":"","mood":"energetic"}]}`,
+            `{"title":"영상 제목","hook":"썸네일 후킹 문구","scenes":[{"narration":"","onScreenText":"","visual":"","imagePrompt":"flat 2D animation illustration, vibrant colors, clean shapes, ...","mood":"energetic"}]}`,
           ].join("\n"),
         },
       ],

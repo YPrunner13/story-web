@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { sceneImageUrl } from "@/lib/image";
 
 type Mood = "calm" | "energetic" | "serious" | "playful" | "inspiring";
 
@@ -9,6 +10,7 @@ interface Scene {
   narration: string;
   onScreenText: string;
   visual: string;
+  imagePrompt: string;
   mood: Mood;
 }
 
@@ -41,6 +43,28 @@ export default function Studio() {
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [done, setDone] = useState(false);
+
+  const [imgUrls, setImgUrls] = useState<string[]>([]);
+  const [imgLoaded, setImgLoaded] = useState<Set<number>>(new Set());
+
+  // 스토리보드가 생기면 장면별 이미지 URL 구성 + 미리 로딩
+  useEffect(() => {
+    if (!board) {
+      setImgUrls([]);
+      setImgLoaded(new Set());
+      return;
+    }
+    const urls = board.scenes.map((s, i) =>
+      sceneImageUrl(s.imagePrompt || s.visual, i * 7 + 1),
+    );
+    setImgUrls(urls);
+    setImgLoaded(new Set());
+    urls.forEach((url, i) => {
+      const img = new window.Image();
+      img.onload = () => setImgLoaded((prev) => new Set(prev).add(i));
+      img.src = url;
+    });
+  }, [board]);
 
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -206,11 +230,21 @@ export default function Studio() {
             className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-2xl"
             style={{ background: MOOD_BG[scene.mood] }}
           >
-            <div
-              key={current}
-              className="px-8 text-center"
-              style={{ animation: "kenburns 6s ease-out forwards" }}
-            >
+            {/* AI 생성 장면 이미지 (배경) */}
+            {imgUrls[current] && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={`img-${current}`}
+                src={imgUrls[current]}
+                alt={scene.visual}
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ animation: "kenburns 6s ease-out forwards" }}
+              />
+            )}
+            {/* 가독성용 어둡게 오버레이 */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40" />
+
+            <div key={current} className="relative px-8 text-center">
               <p
                 className="text-3xl font-extrabold leading-tight text-white drop-shadow-lg sm:text-5xl"
                 style={{ animation: "slideUp 0.7s ease-out both" }}
@@ -218,7 +252,7 @@ export default function Studio() {
                 {scene.onScreenText}
               </p>
               <p
-                className="mx-auto mt-4 max-w-xl text-sm text-white/85 sm:text-base"
+                className="mx-auto mt-4 max-w-xl text-sm text-white/90 drop-shadow sm:text-base"
                 style={{ animation: "fadeIn 1s ease-out 0.3s both" }}
               >
                 {scene.narration}
@@ -226,9 +260,15 @@ export default function Studio() {
             </div>
 
             {/* 장면 인디케이터 */}
-            <div className="absolute right-3 top-3 rounded-full bg-black/30 px-2 py-1 text-xs text-white">
+            <div className="absolute right-3 top-3 rounded-full bg-black/40 px-2 py-1 text-xs text-white">
               {current + 1} / {board.scenes.length}
             </div>
+            {/* 이미지 생성 진행 */}
+            {imgUrls.length > 0 && imgLoaded.size < imgUrls.length && (
+              <div className="absolute left-3 top-3 rounded-full bg-black/40 px-2 py-1 text-xs text-white">
+                🎨 이미지 생성 중 {imgLoaded.size}/{imgUrls.length}
+              </div>
+            )}
             {done && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
                 <span className="text-lg font-semibold">▶ 다시 재생하려면 아래 버튼</span>
@@ -288,7 +328,7 @@ export default function Studio() {
           </details>
 
           <p className="mt-3 text-center text-xs text-neutral-500">
-            * 현재는 브라우저 음성(TTS)+애니메이션 미리보기입니다. 다음 단계에서 장면별 AI 이미지와
+            * 장면별 AI 이미지 + 브라우저 음성(TTS) + 애니메이션 미리보기입니다. 다음 단계에서
             MP4 렌더링·유튜브 자동 업로드를 연동합니다.
           </p>
         </section>
